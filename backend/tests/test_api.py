@@ -60,3 +60,14 @@ def test_v06_audit_record_and_cross_site_guard():
     assert client.get('/api/auth/audit',params={'limit':201}).status_code==422
     blocked=client.post('/api/__audit_probe_404',headers={'sec-fetch-site':'cross-site'})
     assert blocked.status_code==403
+
+def test_terminal_deal_probability_follows_stage():
+    won=client.post('/api/items',json={'company':'Won Ltd','value':120,'probability':30}).json()
+    assert client.patch(f"/api/items/{won['id']}",params={'stage':'Won'}).status_code==200
+    deals={d['id']:d for d in client.get('/api/items').json()}
+    assert deals[won['id']]['probability']==100
+    lost=client.post('/api/items',json={'company':'Lost Ltd','value':300,'probability':55}).json()
+    assert client.patch(f"/api/items/{lost['id']}",params={'stage':'Lost'}).status_code==200
+    deals={d['id']:d for d in client.get('/api/items').json()}
+    assert deals[lost['id']]['probability']==0
+    assert client.post('/api/items',json={'company':'NaN Ltd','value':'NaN'}).status_code==422

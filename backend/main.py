@@ -87,3 +87,31 @@ def pipeline():
             ROUND(COALESCE(SUM(value * probability/100.0),0),2) AS weighted
             FROM deals GROUP BY stage ORDER BY stage"""))
 
+
+from pydantic import Field
+setup("""CREATE TABLE IF NOT EXISTS deal_notes(
+ id INTEGER PRIMARY KEY,deal_id INTEGER NOT NULL,note TEXT NOT NULL,
+ created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(deal_id) REFERENCES deals(id));""")
+
+class Note(BaseModel):
+    note:str=Field(min_length=1,max_length=1500)
+
+@app.get('/api/deals/{deal_id}/notes')
+def deal_notes(deal_id:int):
+    with db() as con:
+        if not con.execute('SELECT 1 FROM deals WHERE id=?',(deal_id,)).fetchone():
+            raise HTTPException(404,'Deal not found')
+        return rows(con.execute('SELECT * FROM deal_notes WHERE deal_id=? ORDER BY id DESC',(deal_id,)))
+
+@app.post('/api/deals/{deal_id}/notes',status_code=201)
+def add_deal_note(deal_id:int,payload:Note):
+    if not payload.note.strip():raise HTTPException(422,'Note required')
+    with db() as con:
+        if not con.execute('SELECT 1 FROM deals WHERE id=?',(deal_id,)).fetchone():
+            raise HTTPException(404,'Deal not found')
+        cur=con.execute('INSERT INTO deal_notes(deal_id,note) VALUES(?,?)',(deal_id,payload.note))
+        return dict(con.execute('SELECT * FROM deal_notes WHERE id=?',(cur.lastrowid,)).fetchone())
+
+from security import install_auth
+install_auth(app,DB)

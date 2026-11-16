@@ -1,7 +1,7 @@
 APP_TITLE = 'Pipeline'
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any
 import sqlite3, os
 from contextlib import contextmanager
@@ -42,10 +42,10 @@ setup("""CREATE TABLE IF NOT EXISTS deal_events(id INTEGER PRIMARY KEY,deal_id I
 class Deal(BaseModel):
     company:str
     contact:str=""
-    value:float
+    value:float=Field(ge=0,allow_inf_nan=False)
     stage:str="Lead"
     owner:str=""
-    probability:int=20
+    probability:int=Field(default=20,ge=0,le=100)
 @app.get('/api/items')
 def items():
     with db() as c:return rows(c.execute('SELECT * FROM deals ORDER BY id DESC'))
@@ -61,7 +61,7 @@ def stage(item_id:int,stage:str):
     with db() as c:
         old=c.execute('SELECT stage FROM deals WHERE id=?',(item_id,)).fetchone()
         if not old:raise HTTPException(404,'Deal not found')
-        c.execute('UPDATE deals SET stage=? WHERE id=?',(stage,item_id))
+        c.execute("UPDATE deals SET stage=?, probability=CASE WHEN ?='Won' THEN 100 WHEN ?='Lost' THEN 0 ELSE probability END WHERE id=?",(stage,stage,stage,item_id))
         if old['stage']!=stage:
             c.execute('INSERT INTO deal_events(deal_id,previous_stage,new_stage) VALUES(?,?,?)',(item_id,old['stage'],stage))
         return {'id':item_id,'stage':stage}
